@@ -1,0 +1,49 @@
+# C9-hpa-multimetric.yaml
+# Multi-Metric HPA: CPU (70%) + HTTP Request Rate (custom metric)
+# This configuration addresses the CPU decoupling limitation
+# identified in the single-metric experiments.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: nginx-hpa-multimetric
+  namespace: dissertation-eval
+  labels:
+    experiment: multi-metric
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: nginx-microservice
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    # Metric 1: CPU Utilisation (same as single-metric experiments)
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    # Metric 2: HTTP request rate per pod (custom via Prometheus Adapter)
+    - type: Pods
+      pods:
+        metric:
+          name: nginx_http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "100"   # Scale when >100 req/s per pod
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+      selectPolicy: Min

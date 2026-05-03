@@ -1,0 +1,127 @@
+================================================================================
+  PromQL Queries — Dissertation Experiments
+  Oliur Rahman Safwan | Leeds Beckett University | 2026
+================================================================================
+
+METRIC AVAILABILITY NOTE
+--------------------------------------------------------------------------------
+USED IN PRIMARY ANALYSIS (standard Kubernetes metrics — no extra tools needed):
+  Query 1:  CPU utilisation per pod
+  Query 2:  HPA current replicas
+  Query 3:  HPA desired replicas
+  Query 8:  Max CPU over experiment duration
+  Query 9:  Average CPU over experiment duration
+  Query 10: HPA scaling event count
+
+REQUIRES nginx-prometheus-exporter (NOT deployed in this study):
+  Query 4:  P95 response time   — needs nginx_http_request_duration_seconds_bucket
+  Query 5:  Load balance CV     — needs nginx_http_requests_total
+  Query 6:  Total request rate  — needs nginx_http_requests_total
+  Query 7:  Per-pod request rate — needs nginx_http_requests_total
+
+  Standard nginx:latest does not expose application-level metrics without
+  nginx-prometheus-exporter. Queries 4-7 are included for completeness
+  and to support future replication using a full nginx monitoring stack.
+  In this study, response time and failure rate were collected from
+  Locust CSV output rather than Prometheus.
+--------------------------------------------------------------------------------
+
+All queries target namespace "dissertation-eval" and are executed via
+Grafana Explore or Prometheus UI at http://localhost:<prometheus-port>.
+
+
+1. CPU UTILISATION PER POD (primary HPA trigger metric)
+-------------------------------------------------------
+rate(container_cpu_usage_seconds_total{namespace="dissertation-eval",container="nginx"}[1m]) * 100
+
+  Returns: CPU usage as percentage of 1 core (multiply by 100 for %)
+  Use:     Primary Grafana dashboard panel; threshold breach detection
+  Notes:   1m rate window balances noise vs responsiveness
+
+
+2. HPA CURRENT REPLICAS
+------------------------
+kube_hpa_status_current_replicas{namespace="dissertation-eval"}
+
+  Returns: Current number of running pod replicas
+  Use:     Pod count over time panel
+
+
+3. HPA DESIRED REPLICAS
+------------------------
+kube_hpa_status_desired_replicas{namespace="dissertation-eval"}
+
+  Returns: Number of replicas HPA wants (may differ from current during scaling)
+  Use:     Detecting scaling intent before pods are ready
+
+
+4. P95 RESPONSE TIME
+---------------------
+histogram_quantile(0.95, rate(nginx_http_request_duration_seconds_bucket{namespace="dissertation-eval"}[1m]))
+
+  Returns: 95th percentile response time in seconds
+  Use:     Tail latency analysis
+  Notes:   Requires nginx-prometheus-exporter or stub_status metrics
+
+
+5. LOAD BALANCE CV (Coefficient of Variation)
+----------------------------------------------
+stddev(rate(nginx_http_requests_total{namespace="dissertation-eval"}[1m])) / avg(rate(nginx_http_requests_total{namespace="dissertation-eval"}[1m]))
+
+  Returns: CV of traffic distribution across pods (0 = perfectly even)
+  Use:     Quantifying load balance evenness during scaling events
+  Notes:   CV < 0.05 = even; CV 0.15-0.25 = transient imbalance
+
+
+6. TOTAL REQUEST RATE
+----------------------
+sum(rate(nginx_http_requests_total{namespace="dissertation-eval"}[1m]))
+
+  Returns: Total requests per second across all pods
+  Use:     Monitoring overall throughput
+
+
+7. PER-POD REQUEST RATE
+------------------------
+rate(nginx_http_requests_total{namespace="dissertation-eval"}[1m])
+
+  Returns: Requests per second per pod (one line per pod in Grafana)
+  Use:     Traffic distribution panel; identifying hot pods
+
+
+8. MAX CPU OVER EXPERIMENT DURATION
+------------------------------------
+max_over_time(rate(container_cpu_usage_seconds_total{namespace="dissertation-eval",container="nginx"}[1m])[10m:15s]) * 100
+
+  Returns: Peak CPU % over the last 10 minutes
+  Use:     Post-experiment analysis; replace [10m] with experiment duration
+  Notes:   Step resolution [15s] matches scrape interval
+
+
+9. AVERAGE CPU OVER EXPERIMENT DURATION
+----------------------------------------
+avg_over_time(rate(container_cpu_usage_seconds_total{namespace="dissertation-eval",container="nginx"}[1m])[10m:15s]) * 100
+
+  Returns: Average CPU % over the last 10 minutes
+  Use:     Post-experiment analysis; resource efficiency calculation
+
+
+10. HPA SCALING EVENTS (via kube-state-metrics)
+-------------------------------------------------
+changes(kube_hpa_status_current_replicas{namespace="dissertation-eval"}[1h])
+
+  Returns: Number of replica count changes in the last hour
+  Use:     Counting total scaling events per experiment
+
+
+================================================================================
+  GRAFANA DASHBOARD PANEL CONFIGURATION
+================================================================================
+
+Panel 1: CPU Utilisation        → Query #1, Time series, Y: 0-100%
+Panel 2: Pod Count              → Query #2, Time series, Y: 0-10
+Panel 3: Response Time (P95)    → Query #4, Time series
+Panel 4: Traffic Distribution   → Query #7, Time series (one line per pod)
+
+Set dashboard time range to match experiment duration.
+Set refresh interval to 5s during live experiments.
