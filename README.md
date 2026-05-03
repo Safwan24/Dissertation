@@ -999,9 +999,5 @@ J3. CSV CROSS-CHECK NOTES
   END OF MANUAL
 ================================================================================
 
-  Last updated: 2 May 2026 (v4 — updated to reflect completed experiments,
-  corrected CSV values, fixed port-forward vs minikube tunnel, updated
-  file manifest with all 20 CSVs and C9-C11, corrected script name to
-  run-overnight.ps1, removed outdated remaining-scenarios section)
-
+  Last updated: 2 May 2026 
   Oliur Rahman Safwan | Student ID: 77547231 | Leeds Beckett University
